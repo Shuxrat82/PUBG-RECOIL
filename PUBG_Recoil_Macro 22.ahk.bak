@@ -1,0 +1,477 @@
+; ╔══════════════════════════════════════════════════════════════════════════════╗
+; ║                     PUBG RECOIL CONTROL MACRO v5.0 PRO                      ║
+; ║                         AutoHotkey v2.0+                                    ║
+; ║        ПРОФИЛИ ОРУЖИЙ | АВТО-ПРИЦЕЛ | NO RECOIL ALL WEAPONS                 ║
+; ║      High Resolution Timer + Sub-pixel Accumulator + First Shot Kick        ║
+; ╚══════════════════════════════════════════════════════════════════════════════╝
+
+#Requires AutoHotkey v2.0
+#SingleInstance Force
+ListLines 0
+KeyHistory 0
+SetWinDelay 0
+SetControlDelay 0
+SetMouseDelay -1
+SendMode "Input"
+CoordMode "Mouse", "Screen"
+ProcessSetPriority "High"
+A_MaxHotkeysPerInterval := 200
+
+; Активация таймера высокого разрешения (1 мс)
+DllCall("Winmm\timeBeginPeriod", "UInt", 1)
+OnExit(ExitCleanup)
+ExitCleanup(*) {
+    StopSpray()
+    ReleaseJKey()
+    DllCall("Winmm\timeEndPeriod", "UInt", 1)
+}
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ПРОВЕРКА ПРАВ
+; ═══════════════════════════════════════════════════════════════════════════════
+if not A_IsAdmin {
+    try {
+        if A_IsCompiled
+            Run "*RunAs `"" A_ScriptFullPath "`""
+        else
+            Run "*RunAs `"" A_AhkPath "`" `"" A_ScriptFullPath "`""
+    } catch {
+        MsgBox "Скрипт требует прав администратора!"
+    }
+    ExitApp
+}
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ПРОФИЛИ ОРУЖИЙ — ВСЕ ОРУЖИЯ PUBG
+; ═══════════════════════════════════════════════════════════════════════════════
+
+; Формат: [Имя, [1x, 2x, 3x, 4x, 6x]]
+global WeaponProfiles := [
+    ; ── Автоматы (AR) ──
+    {name: "M416",         scopes: [1.9, 2.8, 3.9, 4.5, 5.5]},      ; Numpad1
+    {name: "ACE32",        scopes: [1.7, 2.7, 4.1, 4.8, 5.8]},      ; Numpad2
+    {name: "AKM",          scopes: [2.0, 3.3, 4.8, 5.5, 6.5]},      ; Numpad3
+    {name: "M762",         scopes: [2.2, 3.5, 5.3, 6.0, 7.0]},      ; Numpad4
+    {name: "SCAR-L",       scopes: [1.5, 2.3, 3.5, 4.0, 5.0]},      ; Numpad5
+    {name: "G36C",         scopes: [1.5, 2.3, 3.5, 4.0, 5.0]},      ; Numpad6
+    {name: "QBZ",          scopes: [1.6, 2.5, 3.7, 4.3, 5.3]},      ; Numpad7
+    {name: "GROZA",        scopes: [2.3, 3.6, 5.5, 0.0, 0.0]},      ; Numpad8
+    {name: "AUG",          scopes: [1.4, 2.2, 3.3, 3.8, 4.8]},      ; Numpad9
+    {name: "FAMAS",        scopes: [1.3, 2.0, 3.0, 3.5, 4.5]},      ; Numpad0
+
+    ; ── ещё AR ──
+    {name: "Honey Badger", scopes: [1.4, 2.2, 3.3, 3.8, 4.8]},
+    {name: "K2",           scopes: [1.6, 2.5, 3.7, 4.3, 5.3]},
+    {name: "M16A4",        scopes: [1.5, 2.3, 3.4, 4.0, 5.0]},
+    ; ── доп. AR ──
+    {name: "Mk47 Mutant",  scopes: [2.1, 3.2, 4.6, 0.0, 0.0]},
+    ; ── Пистолеты-пулемёты (СМГ) ──
+    {name: "UMP45",        scopes: [1.0, 1.6, 2.3, 0.0, 0.0]},
+    {name: "Vector",       scopes: [1.1, 1.7, 2.5, 0.0, 0.0]},
+    {name: "Micro UZI",    scopes: [0.8, 0.0, 0.0, 0.0, 0.0]},
+    {name: "MP5K",         scopes: [1.0, 1.6, 2.3, 0.0, 0.0]},
+    {name: "PP-19 Bizon",  scopes: [1.0, 1.5, 2.2, 0.0, 0.0]},
+    {name: "Tommy Gun",    scopes: [1.3, 2.0, 0.0, 0.0, 0.0]},
+    {name: "P90",          scopes: [0.9, 1.4, 2.0, 0.0, 0.0]},
+    {name: "JS9",          scopes: [1.0, 1.5, 2.2, 0.0, 0.0]},
+    {name: "MP9",          scopes: [0.9, 1.4, 0.0, 0.0, 0.0]},
+    ; ── DMR (авто) ──
+    {name: "VSS",          scopes: [0.0, 0.0, 0.0, 1.6, 0.0]},      ; встроенный 4x
+    ; ── Пулемёты (LMG) ──
+    {name: "DP-28",        scopes: [1.8, 2.8, 4.0, 4.7, 5.7]},
+    {name: "M249",         scopes: [2.0, 3.0, 4.5, 5.2, 6.2]},
+    {name: "MG3",          scopes: [2.1, 3.2, 4.7, 5.4, 6.4]}
+]
+
+global ScopeNames := ["1x", "2x", "3x", "4x", "6x"]
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; НАСТРОЙКИ
+; ═══════════════════════════════════════════════════════════════════════════════
+
+global CurrentWeapon := 1         ; Индекс текущего оружия (1-based)
+global CurrentScope := 1          ; Индекс текущего прицела (1=1x, 2=2x, 3=3x, 4=4x, 5=6x)
+global RecoilStrength := 1.9      ; Текущая сила (авто из профиля)
+global RecoilMin := 0.1
+global RecoilMax := 20.0
+global RecoilStep := 0.1
+global RecoilInterval := 10
+global ShiftMultiplier := 1.20
+global FirstShotKick   := 1.5
+global FirstShotTime   := 150
+
+global MacroEnabled := true
+global LButtonToXButton2 := false
+global JKeyPressed := false
+global SprayStartTime := 0
+global RemainderY := 0.0
+global IsSpraying := false
+global ManualAdjust := 0.0        ; Ручная подстройка поверх профиля
+
+; Инициализация — после создания GUI (см. ниже)
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ФУНКЦИИ ПРОФИЛЕЙ
+; ═══════════════════════════════════════════════════════════════════════════════
+
+ApplyWeaponProfile() {
+    global CurrentWeapon, CurrentScope, RecoilStrength, ManualAdjust
+    wp := WeaponProfiles[CurrentWeapon]
+    baseRecoil := wp.scopes[CurrentScope]
+    if (baseRecoil == 0.0) {
+        ; Прицел не поддерживается — найти ближайший
+        loop wp.scopes.Length {
+            idx := wp.scopes.Length - A_Index + 1
+            if (wp.scopes[idx] != 0.0) {
+                CurrentScope := idx
+                baseRecoil := wp.scopes[idx]
+                break
+            }
+        }
+    }
+    RecoilStrength := Round(baseRecoil + ManualAdjust, 1)
+    if (RecoilStrength < 0.1)
+        RecoilStrength := 0.1
+    UpdateOverlay()
+}
+
+SelectWeapon(index) {
+    global CurrentWeapon, ManualAdjust
+    if (index < 1 || index > WeaponProfiles.Length)
+        return
+    CurrentWeapon := index
+    ManualAdjust := 0.0
+    ApplyWeaponProfile()
+    SoundBeep(900, 50)
+}
+
+NextWeapon() {
+    global CurrentWeapon, ManualAdjust
+    CurrentWeapon := CurrentWeapon >= WeaponProfiles.Length ? 1 : CurrentWeapon + 1
+    ManualAdjust := 0.0
+    ApplyWeaponProfile()
+    SoundBeep(900, 50)
+}
+
+PrevWeapon() {
+    global CurrentWeapon, ManualAdjust
+    CurrentWeapon := CurrentWeapon <= 1 ? WeaponProfiles.Length : CurrentWeapon - 1
+    ManualAdjust := 0.0
+    ApplyWeaponProfile()
+    SoundBeep(700, 50)
+}
+
+NextScope() {
+    global CurrentScope
+    wp := WeaponProfiles[CurrentWeapon]
+    ; Ищем следующий НЕнулевой прицел
+    newScope := CurrentScope
+    loop wp.scopes.Length {
+        tryScope := Mod(CurrentScope + A_Index - 1, wp.scopes.Length) + 1
+        if (wp.scopes[tryScope] != 0.0) {
+            newScope := tryScope
+            break
+        }
+    }
+    if (newScope != CurrentScope) {
+        CurrentScope := newScope
+        ApplyWeaponProfile()
+        SoundBeep(1000, 40)
+    }
+}
+
+PrevScope() {
+    global CurrentScope
+    wp := WeaponProfiles[CurrentWeapon]
+    newScope := CurrentScope
+    loop wp.scopes.Length {
+        tryScope := Mod(CurrentScope - A_Index - 1 + wp.scopes.Length, wp.scopes.Length) + 1
+        if (wp.scopes[tryScope] != 0.0) {
+            newScope := tryScope
+            break
+        }
+    }
+    if (newScope != CurrentScope) {
+        CurrentScope := newScope
+        ApplyWeaponProfile()
+        SoundBeep(800, 40)
+    }
+}
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ИНТЕРФЕЙС
+; ═══════════════════════════════════════════════════════════════════════════════
+
+global RecoilGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20 +E0x08000000")
+RecoilGui.BackColor := "000000"
+RecoilGui.SetFont("s10 c00FF00 w700", "Segoe UI")
+global RecoilText := RecoilGui.Add("Text", "w220 Center", "")
+RecoilGui.Show("x" . (A_ScreenWidth - 235) . " y0 NoActivate")
+WinSetTransColor("000000 200", RecoilGui)
+SetTimer(KeepOverlayOnTop, 1000)
+ApplyWeaponProfile()   ; Инициализация профиля ПОСЛЕ создания GUI
+
+IsGameActive() {
+    return WinActive("ahk_exe TslGame.exe")
+}
+
+KeepOverlayOnTop() {
+    if (MacroEnabled && RecoilGui)
+        try DllCall("SetWindowPos", "Ptr", RecoilGui.Hwnd, "Ptr", -1, "Int", 0, "Int", 0, "Int", 0, "Int", 0, "UInt", 0x0013)
+}
+
+UpdateOverlay() {
+    global RecoilStrength, RecoilText, LButtonToXButton2, CurrentWeapon, CurrentScope
+    if RecoilText {
+        wp := WeaponProfiles[CurrentWeapon]
+        disp := wp.name . "|" . ScopeNames[CurrentScope] . "|" . Format("{:.1f}", RecoilStrength)
+        if (LButtonToXButton2)
+            disp .= "|RMP"
+        RecoilText.Value := disp
+    }
+}
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ЛОГИКА КОМПЕНСАЦИИ
+; ═══════════════════════════════════════════════════════════════════════════════
+
+ManageJKey() {
+    global JKeyPressed
+    if (!GetKeyState("RButton", "P") && !JKeyPressed) {
+        SendInput "{j down}"
+        JKeyPressed := true
+    }
+}
+
+ReleaseJKey() {
+    global JKeyPressed
+    if (JKeyPressed) {
+        SendInput "{j up}"
+        JKeyPressed := false
+    }
+}
+
+ApplyRecoil() {
+    Critical
+    global RemainderY, IsSpraying
+    if (!MacroEnabled || !IsGameActive() || !IsSpraying)
+        return
+
+    if (!GetKeyState("LButton", "P") && !GetKeyState("XButton2", "P")) {
+        StopSpray()
+        return
+    }
+
+    curStrength := RecoilStrength
+
+    if GetKeyState("Shift", "P")
+        curStrength *= ShiftMultiplier
+
+    if ((A_TickCount - SprayStartTime) < FirstShotTime)
+        curStrength *= FirstShotKick
+
+    totalY := curStrength + RemainderY
+    moveY := Round(totalY)
+    RemainderY := totalY - moveY
+
+    if (moveY != 0)
+        DllCall("mouse_event", "UInt", 0x0001, "Int", 0, "Int", moveY, "UInt", 0, "Ptr", 0)
+}
+
+AutoFire() {
+    Critical
+    if (!MacroEnabled || !IsGameActive()) {
+        SetTimer AutoFire, 0
+        return
+    }
+
+    if (!GetKeyState("XButton2", "P") && !(LButtonToXButton2 && GetKeyState("LButton", "P"))) {
+        SetTimer AutoFire, 0
+        StopSpray()
+        return
+    }
+
+    Click
+}
+
+StartSpray() {
+    global SprayStartTime, RemainderY, IsSpraying
+    if (IsSpraying)
+        return
+    IsSpraying := true
+    SprayStartTime := A_TickCount
+    RemainderY := 0.0
+    ManageJKey()
+    SetTimer ApplyRecoil, RecoilInterval
+}
+
+StopSpray() {
+    global IsSpraying
+    if (!IsSpraying)
+        return
+    IsSpraying := false
+    SetTimer ApplyRecoil, 0
+    SetTimer AutoFire, 0
+    ReleaseJKey()
+}
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ХОТКЕИ — ГЛОБАЛЬНЫЕ
+; ═══════════════════════════════════════════════════════════════════════════════
+
+^CapsLock:: {
+    global MacroEnabled
+    MacroEnabled := !MacroEnabled
+    if (MacroEnabled) {
+        RecoilGui.Show("NoActivate")
+        SoundBeep(1200, 100)
+    } else {
+        RecoilGui.Hide()
+        SoundBeep(400, 100)
+        StopSpray()
+        ReleaseJKey()
+    }
+}
+
+; ── Тонкая настройка и выбор оружия (только когда макро включено) ──
+#HotIf MacroEnabled
+
+*Home:: {
+    global ManualAdjust, RecoilStrength
+    if (RecoilStrength < RecoilMax) {
+        ManualAdjust := Round(ManualAdjust + RecoilStep, 1)
+        ApplyWeaponProfile()
+        SoundBeep(800, 50)
+    } else {
+        SoundBeep(600, 50)
+    }
+}
+
+*Delete:: {
+    global ManualAdjust, RecoilStrength
+    if (RecoilStrength > RecoilMin) {
+        ManualAdjust := Round(ManualAdjust - RecoilStep, 1)
+        ApplyWeaponProfile()
+        SoundBeep(500, 50)
+    } else {
+        SoundBeep(300, 50)
+    }
+}
+
+; ── Выбор оружий — Numpad ──
+Numpad1::SelectWeapon(1)    ; M416
+Numpad2::SelectWeapon(2)    ; ACE32
+Numpad3::SelectWeapon(3)    ; AKM
+Numpad4::SelectWeapon(4)    ; M762
+Numpad5::SelectWeapon(5)    ; SCAR-L
+Numpad6::SelectWeapon(6)    ; G36C
+Numpad7::SelectWeapon(7)    ; QBZ
+Numpad8::SelectWeapon(8)    ; GROZA
+Numpad9::SelectWeapon(9)    ; AUG
+Numpad0::SelectWeapon(10)   ; FAMAS
+
+; ── Листать оружия ──
+NumpadAdd::NextWeapon()
+NumpadSub::PrevWeapon()
+
+; ── Переключение прицела ──
+NumpadDiv::NextScope()      ; Numpad /
+NumpadMult::PrevScope()     ; Numpad *
+
+#HotIf
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ХОТКЕЙ K — ГЛОБАЛЬНЫЙ
+; ═══════════════════════════════════════════════════════════════════════════════
+
+#HotIf MacroEnabled
+
+$*k:: {
+    if (!IsGameActive()) {
+        SendInput "{Blind}{k}"
+        return
+    }
+
+    Critical
+    global LButtonToXButton2, IsSpraying
+
+    if (IsSpraying) {
+        StopSpray()
+        if (LButtonToXButton2)
+            SendInput "{XButton2 Up}"
+    }
+
+    LButtonToXButton2 := !LButtonToXButton2
+    UpdateOverlay()
+    if (LButtonToXButton2)
+        SoundBeep(1000, 50)
+    else
+        SoundBeep(600, 50)
+    Critical "Off"
+}
+
+#HotIf
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ХОТКЕИ — РЕЖИМ REMAP (LButton → XButton2)
+; ═══════════════════════════════════════════════════════════════════════════════
+
+#HotIf WinActive("ahk_exe TslGame.exe") && LButtonToXButton2
+
+$*LButton:: {
+    SendInput "{XButton2 Down}"
+    if (MacroEnabled) {
+        StartSpray()
+        SetTimer AutoFire, 40
+    }
+}
+
+$*LButton Up:: {
+    SendInput "{XButton2 Up}"
+    StopSpray()
+}
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ХОТКЕИ — ОБЫЧНЫЙ РЕЖИМ
+; ═══════════════════════════════════════════════════════════════════════════════
+
+#HotIf WinActive("ahk_exe TslGame.exe") && !LButtonToXButton2
+
+*~LButton:: {
+    if (!MacroEnabled)
+        return
+    StartSpray()
+}
+
+*~LButton Up:: {
+    StopSpray()
+}
+
+; ═══════════════════════════════════════════════════════════════════════════════
+; ХОТКЕИ — ОБЩИЕ ДЛЯ ИГРЫ
+; ═══════════════════════════════════════════════════════════════════════════════
+
+#HotIf WinActive("ahk_exe TslGame.exe")
+
+*~RButton:: {
+    if (JKeyPressed)
+        ReleaseJKey()
+}
+
+$*~XButton2:: {
+    if (!MacroEnabled || LButtonToXButton2)
+        return
+    StartSpray()
+    SetTimer AutoFire, 40
+}
+
+$*~XButton2 Up:: {
+    if (LButtonToXButton2)
+        return
+    StopSpray()
+}
+
+#HotIf
+
+; Экстренный выход
+^+q::ExitApp
