@@ -501,7 +501,7 @@ SaveCurrentWeaponToIni() {
 }
 
 ; ══════════════════════════════════════════════════════════════════[...]
-; F12 — СБРОС ВСЕХ НАСТРОЕК ПО УМОЛЧАНИЮ
+; F4 — СБРОС ВСЕХ НАСТРОЕК ПО УМОЛЧАНИЮ
 ; ══════════════════════════════════════════════════════════════════[...]
 
 ResetAllSettingsToDefaults() {
@@ -541,9 +541,9 @@ ResetAllSettingsToDefaults() {
     UpdateOverlay()
     
     ; Звуковое уведомление
-    SoundBeep(1500, 150)  ; Высокий звук для подтверждения
-    SoundBeep(1000, 100)  ; Второй звук
-    SoundBeep(500, 100)   ; Третий звук
+    SoundBeep(1500, 150)
+    SoundBeep(1000, 100)
+    SoundBeep(500, 100)
 }
 
 ResetWeaponTuningDefaults() {
@@ -793,7 +793,7 @@ AdjustCurrentWeaponInterval(delta) {
     tuning.interval := newVal
     ApplyWeaponProfile()
     RestartSprayTimersIfActive()
-    SaveCurrentWeaponToIni()  ; ✅ ИСПРАВЛЕНО: только текущее оружие
+    SaveCurrentWeaponToIni()
     return true
 }
 
@@ -813,7 +813,7 @@ AdjustCurrentFirstShotKick(delta) {
         return false
     tuning.firstShotKick := newVal
     ApplyWeaponProfile()
-    SaveCurrentWeaponToIni()  ; ✅ ИСПРАВЛЕНО: только текущее оружие
+    SaveCurrentWeaponToIni()
     return true
 }
 
@@ -833,7 +833,7 @@ AdjustCurrentFirstShotTime(delta) {
         return false
     tuning.firstShotTime := newVal
     ApplyWeaponProfile()
-    SaveCurrentWeaponToIni()  ; ✅ ИСПРАВЛЕНО: только текущее оружие
+    SaveCurrentWeaponToIni()
     return true
 }
 
@@ -913,7 +913,6 @@ AdjustCalibrationValue(direction) {
 }
 
 CalibrationKeyDown(direction) {
-    ; ✅ ИСПРАВЛЕНО: убрана мёртвая проверка MacroEnabled (хоткеи уже под #HotIf MacroEnabled)
     if AdjustCalibrationValue(direction)
         SoundBeep(direction > 0 ? 930 : 650, 45)
     else
@@ -1268,11 +1267,12 @@ ToggleMacro() {
         ReleaseVirtualXButton2()
     }
 }
+
 F9::ToggleMacro()
 ^CapsLock::ToggleMacro()
 
-; F12 - Сброс всех настроек по умолчанию
-F12::ResetAllSettingsToDefaults()
+; F4 - Сброс всех настроек по умолчанию
+F4::ResetAllSettingsToDefaults()
 
 ; Калибровка: $ + UseHook — клавиши не уходят в игру, работают в PUBG
 #InputLevel 1
