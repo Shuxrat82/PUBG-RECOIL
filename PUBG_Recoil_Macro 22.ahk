@@ -175,7 +175,7 @@ global PlayerStance := "STAND"
 global CrouchMultiplier := 0.80
 global ProneMultiplier := 0.40
 
-global MacroEnabled := false  ; ✅ ИСПРАВЛЕНО: было true
+global MacroEnabled := false
 global LButtonToXButton2 := false
 global VirtualXButton2Down := false
 global SprayStartTime := 0
@@ -184,7 +184,8 @@ global SmoothedRecoil := 0.0
 global IsSpraying := false
 global ManualAdjust := 0.0
 global CalibTargetIndex := 1
-global CalibTargetNames := ["RCL", "INT", "KICK", "TIME", "DMR", "SMF"]
+global CalibTargetNames := ["RCL", "INT", "KICK", "TIME", "SMF"]
+global IsCalibration := false
 
 ; ════════════════════════════════════════════════════════════════════════════════
 ; ФУНКЦИИ ПРОФИЛЕЙ
@@ -323,16 +324,106 @@ ApplyOverlayChrome() {
 }
 
 UpdateOverlay() {
-    global RecoilStrength, RecoilText, LButtonToXButton2, CurrentWeapon, CurrentScope, MacroEnabled
+    global RecoilStrength, RecoilText, LButtonToXButton2, CurrentWeapon, CurrentScope, MacroEnabled, IsCalibration, CalibTargetIndex, CalibTargetNames
     if (RecoilText) {
         wp := WeaponProfiles[CurrentWeapon]
         disp := wp.name . "|" . ScopeNames[CurrentScope] . "|" . Format("{:.1f}", RecoilStrength)
         if (LButtonToXButton2)
             disp .= "|RMP"
+        if (IsCalibration)
+            disp := "CALIB:" . CalibTargetNames[CalibTargetIndex] . "|" . disp
         if (!MacroEnabled)
             disp := "[OFF] " . disp
         RecoilText.Value := disp
     }
+}
+
+; ════════════════════════════════════════════════════════════════════════════════
+; КАЛИБРОВКА ОТДАЧИ (F6)
+; ════════════════════════════════════════════════════════════════════════════════
+
+EnterCalibrationMode() {
+    global IsCalibration, CalibTargetIndex, MacroEnabled
+    if (!MacroEnabled) {
+        MsgBox "Включите макро (F9) перед калибровкой!", "Ошибка", "48"
+        return
+    }
+    IsCalibration := !IsCalibration
+    CalibTargetIndex := 1
+    if (IsCalibration) {
+        SoundBeep(1200, 100)
+        SoundBeep(1200, 100)
+        MsgBox "РЕЖИМ КАЛИБРОВКИ ВКЛЮЧЕН`n`nИспользуйте:`nF7 - Предыдущий параметр`nF8 - Следующий параметр`nNumpad +/- для изменения`nF6 для выхода", "Калибровка", "64"
+    } else {
+        SoundBeep(600, 100)
+        MsgBox "Режим калибровки отключен", "Готово", "64"
+    }
+    UpdateOverlay()
+}
+
+CalibrateNext() {
+    global CalibTargetIndex, CalibTargetNames, IsCalibration
+    if (!IsCalibration)
+        return
+    CalibTargetIndex := CalibTargetIndex < CalibTargetNames.Length ? CalibTargetIndex + 1 : 1
+    SoundBeep(1000, 50)
+    UpdateOverlay()
+}
+
+CalibratePrev() {
+    global CalibTargetIndex, CalibTargetNames, IsCalibration
+    if (!IsCalibration)
+        return
+    CalibTargetIndex := CalibTargetIndex > 1 ? CalibTargetIndex - 1 : CalibTargetNames.Length
+    SoundBeep(800, 50)
+    UpdateOverlay()
+}
+
+CalibrateValue(delta) {
+    global IsCalibration, CalibTargetIndex, RecoilStrength, RecoilInterval, FirstShotKick, FirstShotTime
+    global RecoilSmoothFactor, IntervalMin, IntervalMax, FirstShotKickMin, FirstShotKickMax
+    global FirstShotTimeMin, FirstShotTimeMax, SmoothFactorMin, SmoothFactorMax, CurrentWeapon, WeaponTuning
+    
+    if (!IsCalibration)
+        return
+    
+    wp := WeaponProfiles[CurrentWeapon]
+    calibStep := 0.05
+    
+    switch CalibTargetIndex {
+        case 1:  ; RCL - Отдача
+            RecoilStrength := Round(RecoilStrength + delta * 0.1, 1)
+            if (RecoilStrength < 0.1) RecoilStrength := 0.1
+            if (RecoilStrength > 20) RecoilStrength := 20
+        case 2:  ; INT - Интервал
+            RecoilInterval := Round(RecoilInterval + delta)
+            if (RecoilInterval < 5) RecoilInterval := 5
+            if (RecoilInterval > 20) RecoilInterval := 20
+        case 3:  ; KICK - FirstShotKick
+            FirstShotKick := Round(FirstShotKick + delta * calibStep, 2)
+            if (FirstShotKick < 1.00) FirstShotKick := 1.00
+            if (FirstShotKick > 2.20) FirstShotKick := 2.20
+        case 4:  ; TIME - FirstShotTime
+            FirstShotTime := Round(FirstShotTime + delta * 5)
+            if (FirstShotTime < 80) FirstShotTime := 80
+            if (FirstShotTime > 280) FirstShotTime := 280
+        case 5:  ; SMF - SmoothFactor
+            RecoilSmoothFactor := Round(RecoilSmoothFactor + delta * 0.05, 2)
+            if (RecoilSmoothFactor < 0.10) RecoilSmoothFactor := 0.10
+            if (RecoilSmoothFactor > 1.00) RecoilSmoothFactor := 1.00
+    }
+    
+    ; Сохраняем в глобальный WeaponTuning
+    if (WeaponTuning.Has(wp.name)) {
+        tuning := WeaponTuning[wp.name]
+        tuning.interval := RecoilInterval
+        tuning.firstShotKick := FirstShotKick
+        tuning.firstShotTime := FirstShotTime
+        tuning.smoothFactor := RecoilSmoothFactor
+    }
+    
+    UpdateOverlay()
+    SoundBeep(1100, 30)
 }
 
 ; ════════════════════════════════════════════════════════════════════════════════
@@ -342,7 +433,7 @@ UpdateOverlay() {
 ResetAllSettingsToDefaults() {
     global CurrentWeapon, CurrentScope, RecoilStrength, ManualAdjust, RecoilInterval
     global FirstShotKick, FirstShotTime, RecoilSmoothFactor, ShiftMultiplier
-    global CrouchMultiplier, ProneMultiplier, LButtonToXButton2, PlayerStance
+    global CrouchMultiplier, ProneMultiplier, LButtonToXButton2, PlayerStance, IsCalibration
     
     CurrentWeapon := 1
     CurrentScope := 1
@@ -356,6 +447,7 @@ ResetAllSettingsToDefaults() {
     ProneMultiplier := 0.40
     LButtonToXButton2 := false
     PlayerStance := "STAND"
+    IsCalibration := false
     
     ApplyWeaponProfile()
     SoundBeep(1500, 150)
@@ -500,38 +592,52 @@ ToggleMacro() {
 F9::ToggleMacro()
 ^CapsLock::ToggleMacro()
 
-; ★ F12 - Сброс ВСЕ настроек по умолчанию
-F12::ResetAllSettingsToDefaults()
-
-; F4 - Альтернативный сброс (опционально)
+; F4 - Сброс всех настроек по умолчанию
 F4::ResetAllSettingsToDefaults()
 
+; F6 - Режим калибровки
+F6::EnterCalibrationMode()
+
+; F7 - Предыдущий параметр калибровки
+F7::CalibratePrev()
+
+; F8 - Следующий параметр калибровки
+F8::CalibrateNext()
+
 ; ════════════════════════════════════════════════════════════════════════════════
-; ХОТКЕИ ДЛЯ ТОНКОЙ НАСТРОЙКИ — ТОЛЬКО КОГДА МАКРО ВКЛЮЧЕНО
+; ХОТКЕИ ДЛ�� ТОНКОЙ НАСТРОЙКИ — ТОЛЬКО КОГДА МАКРО ВКЛЮЧЕНО
 ; ════════════════════════════════════════════════════════════════════════════════
 
 #HotIf MacroEnabled
 
 ; Увеличить/уменьшить отдачу (Numpad + и -)
 NumpadAdd:: {
-    global RecoilStrength, RecoilMax, ManualAdjust, RecoilStep
-    if (RecoilStrength < RecoilMax) {
-        ManualAdjust := Round(ManualAdjust + RecoilStep, 1)
-        ApplyWeaponProfile()
-        SoundBeep(800, 50)
+    global RecoilStrength, RecoilMax, ManualAdjust, RecoilStep, IsCalibration
+    if (IsCalibration) {
+        CalibrateValue(1)
     } else {
-        SoundBeep(600, 50)
+        if (RecoilStrength < RecoilMax) {
+            ManualAdjust := Round(ManualAdjust + RecoilStep, 1)
+            ApplyWeaponProfile()
+            SoundBeep(800, 50)
+        } else {
+            SoundBeep(600, 50)
+        }
     }
 }
 
 NumpadSub:: {
-    global RecoilStrength, RecoilMin, ManualAdjust, RecoilStep
-    if (RecoilStrength > RecoilMin) {
-        ManualAdjust := Round(ManualAdjust - RecoilStep, 1)
-        ApplyWeaponProfile()
-        SoundBeep(500, 50)
+    global RecoilStrength, RecoilMin, ManualAdjust, RecoilStep, IsCalibration
+    if (IsCalibration) {
+        CalibrateValue(-1)
     } else {
-        SoundBeep(300, 50)
+        if (RecoilStrength > RecoilMin) {
+            ManualAdjust := Round(ManualAdjust - RecoilStep, 1)
+            ApplyWeaponProfile()
+            SoundBeep(500, 50)
+        } else {
+            SoundBeep(300, 50)
+        }
     }
 }
 
